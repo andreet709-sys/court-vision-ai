@@ -47,36 +47,49 @@ def get_live_injuries():
 
 @st.cache_data(ttl=1200)  # Cache for 20 mins since this scrapes many players
 def get_league_trends():
-    # 1. Get Top 15 Scorers (Season Avg)
-    stats = leaguedashplayerstats.LeagueDashPlayerStats(season='2024-25', per_mode_detailed='PerGame').get_data_frames()[0]
-    top_players = stats.sort_values(by='PTS', ascending=False).head(15) # Limit to 15 to keep speed up
-    
-    trend_data = []
-    
-    # 2. Loop through them to get "Last 5" context
-    for _, p in top_players.iterrows():
-        try:
-            # Fetch game logs for this specific player
-            logs = playergamelog.PlayerGameLog(player_id=p['PLAYER_ID'], season='2024-25').get_data_frames()[0]
-            
-            if not logs.empty:
-                last_5 = logs.head(5)
-                l5_ppg = last_5['PTS'].mean()
-                season_ppg = p['PTS']
-                delta = l5_ppg - season_ppg
+    try:
+        # 1. Get Top 15 Scorers (Season Avg) - UPDATED TO 2025-26
+        stats = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame').get_data_frames()[0]
+        
+        if stats.empty:
+            return pd.DataFrame(columns=['Player', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status'])
+
+        top_players = stats.sort_values(by='PTS', ascending=False).head(15)
+        
+        trend_data = []
+        
+        # 2. Loop through them to get "Last 5" context
+        for _, p in top_players.iterrows():
+            try:
+                # Fetch game logs for this specific player - UPDATED TO 2025-26
+                logs = playergamelog.PlayerGameLog(player_id=p['PLAYER_ID'], season='2025-26').get_data_frames()[0]
                 
-                trend_data.append({
-                    "Player": p['PLAYER_NAME'],
-                    "Season PPG": round(season_ppg, 1),
-                    "Last 5 PPG": round(l5_ppg, 1),
-                    "Trend (Delta)": round(delta, 1),
-                    "Status": "🔥 Heating Up" if delta > 2.0 else "❄️ Cooling Down" if delta < -2.0 else "Zap"
-                })
-            time.sleep(0.1) # Tiny pause to be nice to NBA API
-        except:
-            continue
+                if not logs.empty:
+                    last_5 = logs.head(5)
+                    l5_ppg = last_5['PTS'].mean()
+                    season_ppg = p['PTS']
+                    delta = l5_ppg - season_ppg
+                    
+                    trend_data.append({
+                        "Player": p['PLAYER_NAME'],
+                        "Season PPG": round(season_ppg, 1),
+                        "Last 5 PPG": round(l5_ppg, 1),
+                        "Trend (Delta)": round(delta, 1),
+                        "Status": "🔥 Heating Up" if delta > 2.0 else "❄️ Cooling Down" if delta < -2.0 else "Zap"
+                    })
+                time.sleep(0.1) # Tiny pause to be nice to NBA API
+            except:
+                continue
+        
+        # SAFETY CHECK: If no data was collected, return empty structure to prevent crash
+        if not trend_data:
+            return pd.DataFrame(columns=['Player', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status'])
             
-    return pd.DataFrame(trend_data)
+        return pd.DataFrame(trend_data)
+
+    except Exception as e:
+        # Fallback if the NBA API fails entirely
+        return pd.DataFrame(columns=['Player', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status'])
 
 # --- CREATE TABS ---
 tab1, tab2 = st.tabs(["📊 Dashboard", "💬 The Oracle"])
@@ -119,9 +132,11 @@ with tab1:
                 st.success(f"Found: {p['full_name']}")
                 with st.spinner('Crunching numbers...'):
                     try:
-                        career = leaguedashplayerstats.LeagueDashPlayerStats(season='2024-25', per_mode_detailed='PerGame').get_data_frames()[0]
+                        # UPDATED TO 2025-26
+                        career = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame').get_data_frames()[0]
                         player_season = career[career['PLAYER_ID'] == p['id']]
-                        logs = playergamelog.PlayerGameLog(player_id=p['id'], season='2024-25').get_data_frames()[0]
+                        # UPDATED TO 2025-26
+                        logs = playergamelog.PlayerGameLog(player_id=p['id'], season='2025-26').get_data_frames()[0]
                         
                         if not player_season.empty and not logs.empty:
                             stats = player_season.iloc[0]
@@ -140,13 +155,12 @@ with tab1:
                             chart_data = logs.head(10).iloc[::-1].set_index('GAME_DATE')[['PRA']]
                             st.line_chart(chart_data)
                         else:
-                            st.warning("No data found for 2024-25 season yet.")
+                            st.warning("No data found for 2025-26 season yet.")
                     except Exception as e:
                         st.error(f"Error fetching data: {e}")
 
     with col2:
         st.subheader("🔥 Trends (Top 15 Scorers)")
-        # Now we use the NEW function that actually has Last 5 data
         df_trends = get_league_trends()
         st.dataframe(df_trends[['Player', 'Trend (Delta)', 'Status']].head(10), hide_index=True)
 
@@ -174,7 +188,6 @@ with tab2:
 
             # Prepare Data Context
             injuries_data = get_live_injuries()
-            # This now returns the table WITH "Last 5 PPG" and "Delta" columns
             trends_data = get_league_trends()
             
             context_text = f"""
@@ -188,12 +201,13 @@ with tab2:
             """
 
             try:
-                # --- FIXED MODEL NAME ---
+                # --- MODEL CONFIGURATION ---
+                # Using the latest Flash model for speed and accuracy
                 model = genai.GenerativeModel('gemini-2.5-flash')
                 
                 full_prompt = f"""
                 SYSTEM ROLE:
-                You are "Daily NBA Analyst," an expert AI basketball analyst for the 2024-25 season. 
+                You are "Daily NBA Analyst," an expert AI basketball analyst for the 2025-26 season. 
                 
                 CORE RULES:
                 1. **Data Authority:** Use the LIVE DATA SOURCE below as your absolute truth. 
