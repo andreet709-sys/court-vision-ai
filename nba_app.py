@@ -3,7 +3,8 @@ import pandas as pd
 import requests
 import time
 from io import StringIO
-from datetime import datetime # No pytz here
+from datetime import datetime
+import google.generativeai as genai
 
 # NBA API imports
 from nba_api.stats.endpoints import (
@@ -21,7 +22,8 @@ st.title("🧠 CourtVision AI")
 
 # --- CONFIGURE GEMINI AI ---
 try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    if "GOOGLE_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 except:
     pass
 
@@ -36,26 +38,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-import pandas as pd
-import requests
-from io import StringIO
-import time
-from nba_api.stats.endpoints import leaguedashplayerstats, commonallplayers
-
 # --- CACHED FUNCTIONS ---
 
 @st.cache_data(ttl=86400) # Cache for 24 hours
 def get_team_map():
     try:
         # 1. Use CommonAllPlayers to get EVERYONE (active, inactive, G-League, etc.)
-        # This fixes the "Unknown Team" bug for injured stars.
         roster = commonallplayers.CommonAllPlayers(is_only_current_season=1).get_data_frames()[0]
-        
-        # Create a dictionary: {'LeBron James': 'LAL', ...}
-        # We ensure names are stripped of extra spaces
         return pd.Series(roster.TEAM_ABBREVIATION.values, index=roster.DISPLAY_FIRST_LAST).to_dict()
     except Exception as e:
-        print(f"Error fetching Team Map: {e}")
         return {}
 
 @st.cache_data(ttl=3600)
@@ -63,7 +54,7 @@ def get_live_injuries():
     url = "https://www.cbssports.com/nba/injuries/"
     headers = {"User-Agent": "Mozilla/5.0"}
     
-    # Get the PROPER roster map (now includes injured players)
+    # Get the PROPER roster map
     team_map = get_team_map()
     
     try:
@@ -77,22 +68,55 @@ def get_live_injuries():
                     dirty_name = str(row['Player']).strip()
                     status = str(row['Injury Status'])
                     
-                    # Logic to clean the name
                     clean_name = dirty_name
                     team_code = "Unknown"
                     
-                    # Try to match against our Master List
                     for official_name, team in team_map.items():
                         if official_name in dirty_name:
                             clean_name = official_name
                             team_code = team
                             break 
                     
-                    # Store as structured data
                     injuries[clean_name] = f"{status} ({team_code})"
                     
         return injuries
     except:
+        return {}
+
+@st.cache_data(ttl=86400) # Cache daily
+def get_defensive_rankings():
+    """Fetches current defensive ratings for all 30 teams."""
+    try:
+        teams = leaguedashteamstats.LeagueDashTeamStats(season='2025-26').get_data_frames()[0]
+        teams = teams.sort_values(by='DEF_RATING', ascending=False) # Worst defenses at the top
+        
+        defense_map = {}
+        for _, row in teams.iterrows():
+            defense_map[row['TEAM_ID']] = {
+                'Team': row['TEAM_NAME'],
+                'Rating': row['DEF_RATING']
+            }
+        return defense_map
+    except Exception as e:
+        return {}
+
+@st.cache_data(ttl=3600)
+def get_todays_games():
+    """Finds out who is playing TODAY (Safe Version - No Pytz)."""
+    try:
+        today = datetime.now().strftime('%m/%d/%Y')
+        board = scoreboardv2.ScoreboardV2(game_date=today).get_data_frames()[0]
+        
+        games = {}
+        if board.empty:
+            return {}
+            
+        for _, row in board.iterrows():
+            games[row['HOME_TEAM_ID']] = row['VISITOR_TEAM_ID']
+            games[row['VISITOR_TEAM_ID']] = row['HOME_TEAM_ID']
+            
+        return games
+    except Exception:
         return {}
 
 @st.cache_data(ttl=600) # Update every 10 mins
@@ -167,38 +191,7 @@ def get_league_trends():
 
     except Exception as e:
         # 🛡️ SAFETY NET: If anything fails, return an empty table WITH HEADERS
-        # This prevents the "KeyError" from crashing your dashboard
         return pd.DataFrame(columns=expected_cols)
-
-@st.cache_data(ttl=3600)
-def get_todays_games():
-    """Finds out who is playing TODAY (Safe Version - No Pytz)."""
-    try:
-        # Simplified Date Logic (Uses server time)
-        today = datetime.now().strftime('%m/%d/%Y')
-        
-        # Pull the scoreboard
-        board = scoreboardv2.ScoreboardV2(game_date=today).get_data_frames()[0]
-        
-        # Map of TEAM_ID -> OPPONENT_ID
-        games = {}
-        if board.empty:
-            return {}
-            
-        for _, row in board.iterrows():
-            games[row['HOME_TEAM_ID']] = row['VISITOR_TEAM_ID']
-            games[row['VISITOR_TEAM_ID']] = row['HOME_TEAM_ID']
-            
-        return games
-    except Exception:
-        # If this fails, we just return empty, preventing a crash
-        return {}
-        # Return the rich dataset
-        return final_df.sort_values(by='Trend (Delta)', ascending=False)
-
-    except Exception as e:
-        # Fallback
-        return pd.DataFrame()
 
 # --- CREATE TABS ---
 tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 CourtVision IQ"])
@@ -209,7 +202,7 @@ tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 CourtVision IQ"])
 with tab1:
     st.markdown("### *Daily Intelligence Agent*")
 
-   # 1. SIDEBAR (Dynamic Injury Scanner)
+    # 1. SIDEBAR (Dynamic Injury Scanner)
     with st.sidebar:
         st.header("🌞 Morning Briefing")
         st.info("Live Injury Report Loaded from CBS Sports")
@@ -219,17 +212,14 @@ with tab1:
         trends = get_league_trends() 
         
         # --- NEW COLLAPSIBLE SECTION ---
-        # We use st.expander to hide the list by default
         with st.expander("⚠️ Impact Players OUT (Click to View)", expanded=False):
             found_impact_injury = False
             
             if not trends.empty and 'Player' in trends.columns:
                 # FILTER: Only show "Impact" players (e.g., > 12 PPG)
-                # This prevents bench players from clogging up this specific alert list
                 impact_df = trends[trends['Season PPG'] > 12]
                 impact_names = impact_df['Player'].tolist()
                 
-                # Check the filtered list against injuries
                 for star in impact_names:
                     for injured_player, status in injuries.items():
                         if star in injured_player: 
@@ -238,11 +228,10 @@ with tab1:
             
             if not found_impact_injury:
                 st.success("✅ No major impact players (>12 PPG) listed as out.")
-        # -------------------------------
-
+        
         st.write("---")
         
-        # Full Database Access (Optional: You can keep or delete this if the list above is enough)
+        # Full Database Access
         st.caption(f"Tracking {len(injuries)} total league injuries.")
         with st.expander("🚑 View Full Roster Report"):
              if injuries:
@@ -250,15 +239,6 @@ with tab1:
                  st.dataframe(df_inj, hide_index=True, height=400)
              else:
                  st.write("No data available.")
-        
-        # Full Database Access
-        st.caption(f"Tracking {len(injuries)} total league injuries.")
-        with st.expander("🚑 View Full Injury Report"):
-            if injuries:
-                df_inj = pd.DataFrame(list(injuries.items()), columns=["Player", "Status"])
-                st.dataframe(df_inj, hide_index=True, height=400)
-            else:
-                st.write("No data available.")
 
     col1, col2 = st.columns([2, 1])
 
@@ -280,7 +260,6 @@ with tab1:
                         # UPDATED TO 2025-26
                         career = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame').get_data_frames()[0]
                         player_season = career[career['PLAYER_ID'] == p['id']]
-                        # UPDATED TO 2025-26
                         logs = playergamelog.PlayerGameLog(player_id=p['id'], season='2025-26').get_data_frames()[0]
                         
                         if not player_season.empty and not logs.empty:
@@ -305,20 +284,19 @@ with tab1:
                         st.error(f"Error fetching data: {e}")
 
     with col2:
-        st.subheader("🔥 Trends (Top 15 Scorers)")
+        st.subheader("🔥 Trends (Top Scorers)")
         df_trends = get_league_trends()
+        
         # 🛡️ SAFETY CHECK: Only try to show data if the columns actually exist
-if not df_trends.empty and 'Trend (Delta)' in df_trends.columns:
-    # Reorder columns to put Matchup first (if it exists)
-    display_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
-    # Filter to only columns that are actually present
-    valid_cols = [c for c in display_cols if c in df_trends.columns]
-    
-    st.dataframe(df_trends[valid_cols].head(10), hide_index=True)
-else:
-    st.warning("⚠️ Market Data Unavailable. The NBA API connection may be down temporarily.")
-    # Show the raw data for debugging if needed
-    # st.write(df_trends)True)
+        if not df_trends.empty and 'Trend (Delta)' in df_trends.columns:
+            # Reorder columns to put Matchup first (if it exists)
+            display_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
+            # Filter to only columns that are actually present
+            valid_cols = [c for c in display_cols if c in df_trends.columns]
+            
+            st.dataframe(df_trends[valid_cols].head(10), hide_index=True)
+        else:
+            st.warning("⚠️ Market Data Unavailable. The NBA API connection may be down temporarily.")
 
 # ==========================================
 # TAB 2: CourtVision IQ (GEMINI CHATBOT)
@@ -353,13 +331,12 @@ with tab2:
             {injuries_data}
             
             2. TOP SCORER TRENDS (Calculated Last 5 Games vs Season):
-            {trends_data.to_string()}
+            {trends_data.to_string() if not trends_data.empty else "Data Unavailable"}
             """
 
             try:
                 # --- MODEL CONFIGURATION ---
-                # Using the latest Flash model for speed and accuracy
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                model = genai.GenerativeModel('gemini-2.0-flash')
                 
                 full_prompt = f"""
                 SYSTEM ROLE:
@@ -370,7 +347,6 @@ with tab2:
                 2. **Reasoning:**
                    - Use the "Trend (Delta)" column in the data to identify who is Hot/Cold.
                    - If a player is NOT in the "Top Scorer Trends" list, admit you don't have their live trend data yet.
-                   - Note: Jayson Tatum has missed the entire season due to injury (Achilles), which is why he does not appear in the active scorers list.
                 3. **Style:** Conversational, sharp, show your math.
 
                 LIVE DATA SOURCE:
@@ -390,21 +366,3 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
