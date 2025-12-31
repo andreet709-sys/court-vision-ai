@@ -103,12 +103,14 @@ def get_league_trends():
             last_n_games=5
         ).get_data_frames()[0]
 
+        # 🛑 FIX: Filter out players who played fewer than 3 games in this span
+        # This eliminates the "Marcus Sasser Trap" (guys who had 1 good game but usually sit)
+        last5_stats = last5_stats[last5_stats['GP'] >= 3]
+
         # --- MERGE THE DATA ---
         merged = pd.merge(
             season_stats[['PLAYER_ID', 'PLAYER_NAME', 'PTS', 'REB', 'AST']], 
-            last5_stats[['PLAYER_ID', 'PTS', 'REB', 'AST']], 
-            on='PLAYER_ID', 
-            suffixes=('_Season', '_L5')
+            # ... rest of the code is the same
         )
 
         # --- CALCULATE TRENDS ---
@@ -321,6 +323,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
