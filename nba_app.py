@@ -111,8 +111,7 @@ def get_league_trends():
         merged = pd.merge(
             season_stats[['PLAYER_ID', 'PLAYER_NAME', 'PTS', 'REB', 'AST']], 
             # ... rest of the code is the same
-        )
-
+       
         # --- CALCULATE TRENDS ---
         merged['Trend_PTS'] = merged['PTS_L5'] - merged['PTS_Season']
         
@@ -323,6 +322,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
