@@ -53,7 +53,6 @@ def get_league_trends():
         })
     return pd.DataFrame(trends)
 # --- MAIN APP UI ---
-st.title("🏀 NBA Daily Intelligence Agent")
 st.markdown("### *Artificial Intelligence for Sports Investing*")
 
 # 1. SIDEBAR: MORNING BRIEFING
@@ -142,3 +141,4 @@ with col2:
     df_trends = get_league_trends()
 
     st.dataframe(df_trends[['Name', 'Team', 'PPG']].head(10), hide_index=True)
+
