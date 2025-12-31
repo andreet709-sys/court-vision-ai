@@ -100,20 +100,44 @@ tab1, tab2 = st.tabs(["📊 Dashboard", "💬 The Oracle"])
 with tab1:
     st.markdown("### *Daily Intelligence Agent*")
 
+    # 1. SIDEBAR (Dynamic Injury Scanner)
     with st.sidebar:
         st.header("🌞 Morning Briefing")
         st.info("Live Injury Report Loaded from CBS Sports")
+        
+        # Load Data
         injuries = get_live_injuries()
-        watchlist = ["LeBron James", "Joel Embiid", "Giannis Antetokounmpo", "Stephen Curry"]
-        st.subheader("⚠️ Key Injury Watch")
-        for star in watchlist:
-            status = "Healthy"
-            for k, v in injuries.items():
-                if star in k:
-                    status = f"🚨 {v}"
-            st.write(f"**{star}:** {status}")
+        trends = get_league_trends() # Uses your Top 15 Scorer list
+        
+        st.subheader("⚠️ Impact Players OUT")
+        
+        # Dynamic Check: Filter Injury Report for Top Scorers
+        found_impact_injury = False
+        
+        if not trends.empty and 'Player' in trends.columns:
+            top_scorers = trends['Player'].tolist()
+            
+            # Check every top scorer against the injury database
+            for star in top_scorers:
+                for injured_player, status in injuries.items():
+                    # Simple check: Does the star's name appear in the injury list?
+                    if star in injured_player: 
+                        st.error(f"**{star}**: {status}")
+                        found_impact_injury = True
+        
+        if not found_impact_injury:
+            st.success("✅ Top 15 Scorers are healthy.")
+            
         st.write("---")
-        st.caption(f"Tracking {len(injuries)} total injuries today.")
+        
+        # Full Database Access
+        st.caption(f"Tracking {len(injuries)} total league injuries.")
+        with st.expander("🚑 View Full Injury Report"):
+            if injuries:
+                df_inj = pd.DataFrame(list(injuries.items()), columns=["Player", "Status"])
+                st.dataframe(df_inj, hide_index=True, height=400)
+            else:
+                st.write("No data available.")
 
     col1, col2 = st.columns([2, 1])
 
@@ -234,3 +258,4 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
