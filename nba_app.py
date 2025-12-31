@@ -307,7 +307,18 @@ with tab1:
     with col2:
         st.subheader("🔥 Trends (Top 15 Scorers)")
         df_trends = get_league_trends()
-        st.dataframe(df_trends[['Player', 'Trend (Delta)', 'Status']].head(10), hide_index=True)
+        # 🛡️ SAFETY CHECK: Only try to show data if the columns actually exist
+if not df_trends.empty and 'Trend (Delta)' in df_trends.columns:
+    # Reorder columns to put Matchup first (if it exists)
+    display_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
+    # Filter to only columns that are actually present
+    valid_cols = [c for c in display_cols if c in df_trends.columns]
+    
+    st.dataframe(df_trends[valid_cols].head(10), hide_index=True)
+else:
+    st.warning("⚠️ Market Data Unavailable. The NBA API connection may be down temporarily.")
+    # Show the raw data for debugging if needed
+    # st.write(df_trends)True)
 
 # ==========================================
 # TAB 2: CourtVision IQ (GEMINI CHATBOT)
@@ -379,6 +390,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
