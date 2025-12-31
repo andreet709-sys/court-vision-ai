@@ -145,4 +145,5 @@ def get_league_trends():
 
         # --- 2. MERGE ---
         merged = pd.merge(
-            season_stats[['
+            season_stats[[
+
