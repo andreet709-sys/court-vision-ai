@@ -294,7 +294,7 @@ with tab1:
     
     st.subheader("🔥 Trends (Top Scorers)")
     if not trends.empty:
-        st.dataframe(trends.head(15), hide_index=True)
+        st.dataframe(trends.head(100), hide_index=True)  # Show top 100 instead of 15
     else:
         st.warning("⚠️ Market Data Unavailable.")
 
@@ -313,3 +313,4 @@ with tab2:
         
         with st.chat_message("assistant"): st.markdown(reply)
         st.session_state.messages.append({"role": "assistant", "content": reply})
+
