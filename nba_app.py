@@ -125,7 +125,7 @@ def get_league_trends():
         return pd.DataFrame(columns=['Player', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status'])
 
 # --- CREATE TABS ---
-tab1, tab2 = st.tabs(["📊 Dashboard", "💬 The Oracle"])
+tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 CourtVision IQ"])
 
 # ==========================================
 # TAB 1: THE DASHBOARD
@@ -222,10 +222,10 @@ with tab1:
         st.dataframe(df_trends[['Player', 'Trend (Delta)', 'Status']].head(10), hide_index=True)
 
 # ==========================================
-# TAB 2: THE ORACLE (GEMINI CHATBOT)
+# TAB 2: CourtVision IQ (GEMINI CHATBOT)
 # ==========================================
 with tab2:
-    st.header("Ask the AI Analyst")
+    st.header("CourtVision IQ Chat")
     st.info("💡 I have read today's injury reports and calculated the Last-5-Game trends for top scorers.")
 
     if "GOOGLE_API_KEY" not in st.secrets:
@@ -291,6 +291,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
