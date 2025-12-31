@@ -4,7 +4,17 @@ import requests
 import google.generativeai as genai
 import time
 from io import StringIO
-from nba_api.stats.endpoints import playergamelog, leaguedashplayerstats
+from datetime import datetime
+import pytz # Standard in most environments, but required for accurate scheduling
+
+# Updated NBA API imports to include Schedule and Defense tools
+from nba_api.stats.endpoints import (
+    playergamelog, 
+    leaguedashplayerstats, 
+    commonallplayers, 
+    leaguedashteamstats, 
+    scoreboardv2
+)
 from nba_api.stats.static import players
 
 # --- PAGE CONFIGURATION ---
@@ -134,7 +144,59 @@ def get_league_trends():
             elif delta <= -3.0: return "❄️ Ice Cold"
             elif delta <= -1.5: return "❄️ Cooling Down"
             else: return "Zap"
+@st.cache_data(ttl=86400) # Cache daily
+def get_defensive_rankings():
+    """Fetches current defensive ratings for all 30 teams."""
+    try:
+        # Get Team Stats
+        teams = leaguedashteamstats.LeagueDashTeamStats(season='2025-26').get_data_frames()[0]
+        
+        # Sort by Defensive Rating (Ascending = Lower is Better Defense)
+        # We want to know who is BAD at defense (High Rating), so we can exploit them.
+        teams = teams.sort_values(by='DEF_RATING', ascending=False) # Worst defenses at the top
+        
+        # Keep it simple: Team Name and Rank
+        defense_map = {}
+        # Rank 30 is the WORST defense (Best for us to bet against)
+        # Rank 1 is the BEST defense (Bad for us)
+        
+        # We need a clean mapping of Team ID to Rating
+        for _, row in teams.iterrows():
+            defense_map[row['TEAM_ID']] = {
+                'Team': row['TEAM_NAME'],
+                'Rating': row['DEF_RATING']
+            }
+            
+        return defense_map
+    except Exception as e:
+        return {}
 
+@st.cache_data(ttl=3600)
+def get_todays_games():
+    """Finds out who is playing TODAY."""
+    try:
+        # Get today's date in Eastern Time (NBA time)
+        eastern = pytz.timezone('US/Eastern')
+        today = datetime.now(eastern).strftime('%m/%d/%Y')
+        
+        board = scoreboardv2.ScoreboardV2(game_date=today).get_data_frames()[0]
+        
+        # Map of TEAM_ID -> OPPONENT_ID
+        games = {}
+        if board.empty:
+            return {}
+            
+        for _, row in board.iterrows():
+            home_id = row['HOME_TEAM_ID']
+            visitor_id = row['VISITOR_TEAM_ID']
+            
+            # Map both sides so we can look up anyone
+            games[home_id] = visitor_id
+            games[visitor_id] = home_id
+            
+        return games
+    except:
+        return {}
         final_df['Status'] = final_df.apply(get_status, axis=1)
 
         # Return the rich dataset
@@ -323,6 +385,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
