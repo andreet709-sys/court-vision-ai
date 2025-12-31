@@ -29,7 +29,6 @@ def clean_id(obj):
         return str(obj)
 
 # --- CONFIGURE GEMINI AI ---
-# We try to configure it, but we won't crash if the key is bad
 try:
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -47,10 +46,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CACHED FUNCTIONS ---
+# --- CACHED FUNCTIONS (Renamed to V2 to Bust Cache) ---
 
 @st.cache_data(ttl=86400) 
-def get_team_map():
+def get_team_map_v2():
     try:
         roster = commonallplayers.CommonAllPlayers(is_only_current_season=1).get_data_frames()[0]
         return pd.Series(roster.TEAM_ABBREVIATION.values, index=roster.DISPLAY_FIRST_LAST).to_dict()
@@ -58,10 +57,10 @@ def get_team_map():
         return {}
 
 @st.cache_data(ttl=3600)
-def get_live_injuries():
+def get_live_injuries_v2():
     url = "https://www.cbssports.com/nba/injuries/"
     headers = {"User-Agent": "Mozilla/5.0"}
-    team_map = get_team_map()
+    team_map = get_team_map_v2()
     
     try:
         response = requests.get(url, headers=headers)
@@ -88,7 +87,7 @@ def get_live_injuries():
         return {}
 
 @st.cache_data(ttl=86400) 
-def get_defensive_rankings():
+def get_defensive_rankings_v2():
     """Fetches defensive ratings and SCRUBS the Team IDs."""
     try:
         teams = leaguedashteamstats.LeagueDashTeamStats(season='2025-26').get_data_frames()[0]
@@ -107,7 +106,7 @@ def get_defensive_rankings():
         return {}
 
 @st.cache_data(ttl=3600)
-def get_todays_games():
+def get_todays_games_v2():
     """Finds today's games using explicit Eastern Time."""
     try:
         # 🕒 FORCE EASTERN TIME (Server Time - 5 Hours) to ensure we get the right date
@@ -133,7 +132,7 @@ def get_todays_games():
         return {}
 
 @st.cache_data(ttl=600) 
-def get_league_trends():
+def get_league_trends_v2():
     expected_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
     
     try:
@@ -159,8 +158,8 @@ def get_league_trends():
         merged['Trend (Delta)'] = merged['PTS_L5'] - merged['PTS_Season']
 
         # --- 3. INTELLIGENCE LAYER ---
-        games = get_todays_games()         
-        defense = get_defensive_rankings() 
+        games = get_todays_games_v2()         
+        defense = get_defensive_rankings_v2() 
 
         def analyze_matchup(row):
             # 🧼 SCRUB THE ID to match our maps
@@ -216,8 +215,9 @@ with tab1:
         st.header("🌞 Morning Briefing")
         st.info("Live Injury Report Loaded from CBS Sports")
         
-        injuries = get_live_injuries()
-        trends = get_league_trends() 
+        # Calling V2 functions forces a fresh data pull
+        injuries = get_live_injuries_v2()
+        trends = get_league_trends_v2() 
         
         with st.expander("⚠️ Impact Players OUT", expanded=False):
             found_impact_injury = False
@@ -279,7 +279,7 @@ with tab1:
 
     with col2:
         st.subheader("🔥 Trends (Top Scorers)")
-        df_trends = get_league_trends()
+        df_trends = get_league_trends_v2()
         
         if not df_trends.empty and 'Trend (Delta)' in df_trends.columns:
             display_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
@@ -309,8 +309,8 @@ with tab2:
                 st.markdown(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
 
-            injuries_data = get_live_injuries()
-            trends_data = get_league_trends()
+            injuries_data = get_live_injuries_v2()
+            trends_data = get_league_trends_v2()
             
             context_text = f"""
             LIVE DATA:
@@ -320,11 +320,11 @@ with tab2:
 
             try:
                 # 🤖 ROBUST AI MODEL SELECTION
-                # Tries '1.5-flash' (Newest Free). If that fails, falls back to 'pro' (Stable Free).
+                # Tries 'gemini-pro' first (Most reliable Free Tier)
                 try:
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                except:
                     model = genai.GenerativeModel('gemini-pro')
+                except:
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                 
                 full_prompt = f"""
                 ROLE: Expert NBA Analyst (2025-26 Season).
