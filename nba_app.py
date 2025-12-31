@@ -151,35 +151,47 @@ tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 CourtVision IQ"])
 with tab1:
     st.markdown("### *Daily Intelligence Agent*")
 
-    # 1. SIDEBAR (Dynamic Injury Scanner)
+   # 1. SIDEBAR (Dynamic Injury Scanner)
     with st.sidebar:
         st.header("🌞 Morning Briefing")
         st.info("Live Injury Report Loaded from CBS Sports")
         
         # Load Data
         injuries = get_live_injuries()
-        trends = get_league_trends() # Uses your Top 15 Scorer list
+        trends = get_league_trends() 
         
-        st.subheader("⚠️ Impact Players OUT")
-        
-        # Dynamic Check: Filter Injury Report for Top Scorers
-        found_impact_injury = False
-        
-        if not trends.empty and 'Player' in trends.columns:
-            top_scorers = trends['Player'].tolist()
+        # --- NEW COLLAPSIBLE SECTION ---
+        # We use st.expander to hide the list by default
+        with st.expander("⚠️ Impact Players OUT (Click to View)", expanded=False):
+            found_impact_injury = False
             
-            # Check every top scorer against the injury database
-            for star in top_scorers:
-                for injured_player, status in injuries.items():
-                    # Simple check: Does the star's name appear in the injury list?
-                    if star in injured_player: 
-                        st.error(f"**{star}**: {status}")
-                        found_impact_injury = True
-        
-        if not found_impact_injury:
-            st.success("✅ Top 15 Scorers are healthy.")
+            if not trends.empty and 'Player' in trends.columns:
+                # FILTER: Only show "Impact" players (e.g., > 12 PPG)
+                # This prevents bench players from clogging up this specific alert list
+                impact_df = trends[trends['Season PPG'] > 12]
+                impact_names = impact_df['Player'].tolist()
+                
+                # Check the filtered list against injuries
+                for star in impact_names:
+                    for injured_player, status in injuries.items():
+                        if star in injured_player: 
+                            st.error(f"**{star}**: {status}")
+                            found_impact_injury = True
             
+            if not found_impact_injury:
+                st.success("✅ No major impact players (>12 PPG) listed as out.")
+        # -------------------------------
+
         st.write("---")
+        
+        # Full Database Access (Optional: You can keep or delete this if the list above is enough)
+        st.caption(f"Tracking {len(injuries)} total league injuries.")
+        with st.expander("🚑 View Full Roster Report"):
+             if injuries:
+                 df_inj = pd.DataFrame(list(injuries.items()), columns=["Player", "Status"])
+                 st.dataframe(df_inj, hide_index=True, height=400)
+             else:
+                 st.write("No data available.")
         
         # Full Database Access
         st.caption(f"Tracking {len(injuries)} total league injuries.")
@@ -309,6 +321,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
