@@ -3,8 +3,12 @@ import pandas as pd
 import requests
 import time
 from io import StringIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import google.generativeai as genai
+import warnings
+
+# Suppress the FutureWarnings from libraries to keep logs clean
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # NBA API imports
 from nba_api.stats.endpoints import (
@@ -136,9 +140,11 @@ def get_defensive_rankings_v4():
 @st.cache_data(ttl=3600)
 def get_todays_games_v4():
     try:
+        # UPDATED: Use timezone-aware UTC to fix deprecation warning
+        now_utc = datetime.now(timezone.utc)
         dates = [
-            (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y'),
-            (datetime.utcnow() + timedelta(hours=19)).strftime('%m/%d/%Y')
+            (now_utc - timedelta(hours=5)).strftime('%m/%d/%Y'),
+            (now_utc + timedelta(hours=19)).strftime('%m/%d/%Y')
         ]
         games = {}
         for d in dates:
