@@ -81,7 +81,7 @@ def get_defensive_rankings_v4():
     
     # 1. LIVE FETCH ATTEMPT
     try:
-        # 🔑 CRITICAL FIX: Request 'Advanced' stats to get DEF_RATING
+        # Request 'Advanced' stats to get DEF_RATING
         teams_data = leaguedashteamstats.LeagueDashTeamStats(
             season='2025-26', 
             measure_type_detailed_defense='Advanced'
@@ -99,13 +99,13 @@ def get_defensive_rankings_v4():
             
     except Exception as e:
         print(f"Defense Fetch Error: {e}")
-        # 2. STATIC FALLBACK (So match shows 'vs LAL' instead of 'Unknown')
+        # 2. STATIC FALLBACK 
         nba_teams = static_teams.get_teams()
         for t in nba_teams:
             tid = clean_id(t['id'])
             defense_map[tid] = {
                 'Team': t['abbreviation'], 
-                'Rating': 114.0 # Default to League Average if live data fails
+                'Rating': 114.0 
             }
             
     return defense_map
@@ -114,7 +114,7 @@ def get_defensive_rankings_v4():
 def get_todays_games_v4():
     """Finds today's games using explicit Eastern Time."""
     try:
-        # Check Today & Tomorrow (Handles late-night timezone shifts)
+        # Check Today & Tomorrow
         dates = [
             (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y'),
             (datetime.utcnow() + timedelta(hours=19)).strftime('%m/%d/%Y')
@@ -140,7 +140,7 @@ def get_league_trends_v4():
         # Fetch Data
         season = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame').get_data_frames()[0]
         l5 = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame', last_n_games=5).get_data_frames()[0]
-        l5 = l5[l5['GP'] >= 3] # Filter low sample size
+        l5 = l5[l5['GP'] >= 3] 
 
         # Merge
         merged = pd.merge(season[['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ID', 'PTS']], 
@@ -170,7 +170,6 @@ def get_league_trends_v4():
                 elif opp_rating < 112.0: return f"vs {opp_name} (🔴 Tough)"
                 else: return f"vs {opp_name} (⚪ Avg)"
             
-            # 3. Fallback (Should be rare now)
             return "vs ???"
 
         merged['Matchup'] = merged.apply(analyze_matchup, axis=1)
@@ -192,16 +191,46 @@ def get_league_trends_v4():
 
 # --- HELPER: ROBUST AI GENERATOR ---
 def generate_ai_response(prompt_text):
-    """Tries 1.5-Flash first, falls back to Pro on error."""
+    """Auto-detects the best available model for your specific API Key."""
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # 1. List valid models for this account
+        available = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available.append(m.name)
+        
+        # 2. Smart Selection (Prefer Flash, then Pro, then anything)
+        selected_model = None
+        
+        # Priority 1: Flash (Fast/Cheap)
+        for m in available:
+            if 'flash' in m and '1.5' in m:
+                selected_model = m
+                break
+        
+        # Priority 2: Pro (Standard)
+        if not selected_model:
+            for m in available:
+                if 'pro' in m and '1.5' in m:
+                    selected_model = m
+                    break
+                    
+        # Priority 3: Any Gemeni
+        if not selected_model:
+             for m in available:
+                if 'gemini' in m:
+                    selected_model = m
+                    break
+        
+        if not selected_model:
+            return "Error: No AI models found. Check API Key permissions."
+
+        # 3. Generate
+        model = genai.GenerativeModel(selected_model)
         return model.generate_content(prompt_text).text
-    except:
-        try:
-            model = genai.GenerativeModel('gemini-pro')
-            return model.generate_content(prompt_text).text
-        except Exception as e:
-            return f"System Error: AI Models Unreachable. ({e})"
+
+    except Exception as e:
+        return f"System Error: {e}"
 
 # --- MAIN APP LAYOUT ---
 tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 CourtVision IQ"])
