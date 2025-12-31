@@ -188,40 +188,50 @@ with tab2:
             st.session_state.messages.append({"role": "user", "content": prompt})
 
             # 4. Prepare Data Context for Gemini
-            # We call the SAME functions used in Tab 1, so the data matches perfectly
             injuries_data = get_live_injuries()
             trends_data = get_league_trends()
             
-            # Create a "Cheatsheet" for the AI
+            # Create the "Source of Truth" Context
             context_text = f"""
-            DATA CONTEXT FOR TODAY:
+            LIVE DATA SOURCE (Use this as your Primary Source):
             
-            1. INJURY REPORT (CBS Sports):
+            1. INJURY REPORT (Live from CBS Sports):
             {injuries_data}
             
-            2. LEAGUE TRENDS (Top 30 Scorers):
+            2. LEAGUE TRENDS (Top 30 Scorers - Last 5 Games vs Season Avg):
             {trends_data.to_string()}
             """
 
-            # 5. Call Gemini
+            # 5. Call Gemini with CUSTOM INSTRUCTIONS
             try:
                 # Configure the model
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # The "System Prompt" tells Gemini who it is
                 full_prompt = f"""
-                You are CourtVision AI, an expert sports betting consultant. 
-                Answer the user's question using ONLY the provided data context.
-                
-                - If the user asks about a player not in the top 30 trends list, admit you don't have their live trend data yet.
-                - Keep answers concise, professional, and focused on betting edge/strategy.
-                
+                SYSTEM ROLE:
+                You are "Daily NBA Analyst," an expert AI basketball analyst specializing in the current 2024-25 NBA season. 
+                Your goal is to provide accurate, insightful, conversational answers using the LIVE DATA provided below.
+
+                CORE RULES (Follow Exactly):
+                1. **Data Authority:** The "LIVE DATA SOURCE" below is your absolute source of truth. It is live and up-to-date. Do not hallucinate stats not shown here.
+                2. **Reasoning Process (Internal):**
+                   - Compare "Last 5 Games" averages against "Season" averages.
+                   - Identify significant deviations: ±10% or more = notable; ±20%+ = strong over/underperformance.
+                   - Check Injury Report: If a key teammate is OUT, explicitly analyze the impact on usage.
+                   - Show transparent math: e.g., "Season: 29.8 | Last 7: 33.2 → +3.4 delta (hot streak)".
+                3. **Response Style:**
+                   - Conversational and engaging — like a sharp hoops friend at the bar.
+                   - Use clean markdown tables for comparisons.
+                   - Be concise unless a deep dive is requested.
+
+                LIVE DATA SOURCE:
                 {context_text}
                 
-                User Question: {prompt}
+                USER QUESTION:
+                {prompt}
                 """
                 
-                with st.spinner("Analyzing markets..."):
+                with st.spinner("Analyzing markets & trends..."):
                     response = model.generate_content(full_prompt)
                     ai_reply = response.text
                 
@@ -232,3 +242,4 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
