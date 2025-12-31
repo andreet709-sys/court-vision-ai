@@ -7,15 +7,15 @@ from datetime import datetime, timedelta, timezone
 import google.generativeai as genai
 import warnings
 
-# Suppress the FutureWarnings from libraries to keep logs clean
+# Suppress FutureWarnings to keep logs clean
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # NBA API imports
 from nba_api.stats.endpoints import (
-    playergamelog, 
-    leaguedashplayerstats, 
-    commonallplayers, 
-    leaguedashteamstats, 
+    playergamelog,
+    leaguedashplayerstats,
+    commonallplayers,
+    leaguedashteamstats,
     scoreboardv2
 )
 from nba_api.stats.static import players, teams as static_teams
@@ -27,10 +27,9 @@ st.set_page_config(page_title="CourtVision AI", page_icon="🧠", layout="wide")
 # 🔒 SECURITY LAYER (THE PAYWALL)
 # ==========================================
 def check_password():
-    """Returns `True` if the user had the correct password."""
-
+    """Returns `True` if the user entered the correct password."""
     def password_entered():
-        """Checks whether a password entered by the user is correct."""
+        """Checks whether the entered password is correct."""
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
             st.session_state["password_correct"] = True
             del st.session_state["password"]  # Don't store password
@@ -38,20 +37,17 @@ def check_password():
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, show input for password.
         st.text_input(
             "🔑 Enter Client Access Code", type="password", on_change=password_entered, key="password"
         )
         return False
     elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error.
         st.text_input(
             "🔑 Enter Client Access Code", type="password", on_change=password_entered, key="password"
         )
         st.error("😕 Access Denied. Please check your subscription.")
         return False
     else:
-        # Password correct.
         return True
 
 if not check_password():
@@ -60,7 +56,6 @@ if not check_password():
 # ==========================================
 # 🚀 MAIN APP LOGIC (Only runs if password is correct)
 # ==========================================
-
 st.title("🧠 CourtVision AI")
 
 # --- HELPER: DATA SCRUBBER ---
@@ -88,7 +83,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CACHED FUNCTIONS ---
-
 @st.cache_data(ttl=3600)
 def get_team_map_v4():
     try:
@@ -115,12 +109,12 @@ def get_live_injuries_v4():
     except:
         return {}
 
-@st.cache_data(ttl=86400) 
+@st.cache_data(ttl=86400)
 def get_defensive_rankings_v4():
     defense_map = {}
     try:
         teams_data = leaguedashteamstats.LeagueDashTeamStats(
-            season='2025-26', 
+            season='2025-26',
             measure_type_detailed_defense='Advanced'
         ).get_data_frames()[0]
         teams_data = teams_data.sort_values(by='DEF_RATING', ascending=False)
@@ -140,7 +134,6 @@ def get_defensive_rankings_v4():
 @st.cache_data(ttl=3600)
 def get_todays_games_v4():
     try:
-        # UPDATED: Use timezone-aware UTC to fix deprecation warning
         now_utc = datetime.now(timezone.utc)
         dates = [
             (now_utc - timedelta(hours=5)).strftime('%m/%d/%Y'),
@@ -159,21 +152,24 @@ def get_todays_games_v4():
     except:
         return {}
 
-@st.cache_data(ttl=600) 
+@st.cache_data(ttl=600)
 def get_league_trends_v4():
     expected_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
     try:
         season = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame').get_data_frames()[0]
         l5 = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame', last_n_games=5).get_data_frames()[0]
-        l5 = l5[l5['GP'] >= 3] 
-
-        merged = pd.merge(season[['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ID', 'PTS']], 
-                          l5[['PLAYER_ID', 'PTS']], on='PLAYER_ID', suffixes=('_Season', '_L5'))
-        merged['Trend (Delta)'] = merged['PTS_L5'] - merged['PTS_Season']
-
-        games = get_todays_games_v4()         
-        defense = get_defensive_rankings_v4() 
-
+        l5 = l5[l5['GP'] >= 3]
+        merged = pd.merge(season[['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ID', 'PTS', 'REB', 'AST']],
+                          l5[['PLAYER_ID', 'PTS', 'REB', 'AST']], on='PLAYER_ID', suffixes=('_Season', '_L5'))
+        
+        # ADD PRA CALCULATIONS HERE
+        merged['PRA_Season'] = merged['PTS_Season'] + merged['REB_Season'] + merged['AST_Season']
+        merged['PRA_L5'] = merged['PTS_L5'] + merged['REB_L5'] + merged['AST_L5']
+        merged['PRA Delta'] = merged['PRA_L5'] - merged['PRA_Season']
+        
+        games = get_todays_games_v4()
+        defense = get_defensive_rankings_v4()
+        
         def analyze_matchup(row):
             my_team = clean_id(row['TEAM_ID'])
             if my_team not in games: return "No Game"
@@ -185,21 +181,34 @@ def get_league_trends_v4():
                 elif opp_rating < 112.0: return f"vs {opp_name} (🔴 Tough)"
                 else: return f"vs {opp_name} (⚪ Avg)"
             return "vs ???"
-
+        
         merged['Matchup'] = merged.apply(analyze_matchup, axis=1)
-        final_df = merged.rename(columns={'PLAYER_NAME': 'Player', 'PTS_Season': 'Season PPG', 'PTS_L5': 'Last 5 PPG'})
+        
+        final_df = merged.rename(columns={
+            'PLAYER_NAME': 'Player',
+            'PTS_Season': 'Season PPG',
+            'PTS_L5': 'Last 5 PPG',
+            'PRA_Season': 'Season PRA',
+            'PRA_L5': 'Last 5 PRA',
+            'PRA Delta': 'PRA Delta'
+        })
+        
+        # Update expected columns to include PRA
+        expected_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Season PRA', 'Last 5 PRA', 'PRA Delta', 'Status']
         
         def get_status(row):
-            d = row['Trend (Delta)']
-            if d >= 4.0: return "🔥 Super Hot"
-            elif d >= 2.0: return "🔥 Heating Up"
-            elif d <= -3.0: return "❄️ Ice Cold"
-            elif d <= -1.5: return "❄️ Cooling Down"
-            else: return "Zap"
-
+            d = row['PRA Delta']
+            if d >= 6.0: return "🔥 Super Hot"
+            elif d >= 3.0: return "🔥 Heating Up"
+            elif d <= -5.0: return "❄️ Ice Cold"
+            elif d <= -2.0: return "❄️ Cooling Down"
+            else: return "⚪ Steady"
+        
         final_df['Status'] = final_df.apply(get_status, axis=1)
-        return final_df[expected_cols].sort_values(by='Trend (Delta)', ascending=False)
-    except:
+        
+        return final_df[expected_cols].sort_values(by='PRA Delta', ascending=False)
+    except Exception as e:
+        st.warning(f"Trends data error: {e}")
         return pd.DataFrame(columns=expected_cols)
 
 def generate_ai_response(prompt_text):
@@ -220,13 +229,13 @@ def generate_ai_response(prompt_text):
                     selected_model = m
                     break
         if not selected_model:
-             for m in available:
+            for m in available:
                 if 'gemini' in m:
                     selected_model = m
                     break
         if not selected_model:
             return "Error: No AI models found."
-
+        
         model = genai.GenerativeModel(selected_model)
         return model.generate_content(prompt_text).text
     except Exception as e:
@@ -243,7 +252,7 @@ with tab1:
         if st.button("🔄 Force Reset Data"):
             st.cache_data.clear()
             st.rerun()
-            
+        
         injuries = get_live_injuries_v4()
         trends = get_league_trends_v4()
         def_debug = get_defensive_rankings_v4()
@@ -257,7 +266,6 @@ with tab1:
         if len(def_debug) == 0: st.error("❌ Critical: Defense Data Missing")
         elif len(def_debug) == 30: st.success("✅ Defense Data Loaded")
         else: st.warning(f"⚠️ Partial Defense Data: {len(def_debug)}/30")
-
         st.write("---")
         st.header("🌞 Morning Briefing")
         
@@ -267,11 +275,11 @@ with tab1:
                 impact_names = trends[trends['Season PPG'] > 12]['Player'].tolist()
                 for star in impact_names:
                     for injured_name, status in injuries.items():
-                        if star in injured_name: 
+                        if star in injured_name:
                             st.error(f"**{star}**: {status}")
                             found_impact = True
             if not found_impact: st.success("✅ No impact players out.")
-
+    
     st.subheader("🔥 Trends (Top Scorers)")
     if not trends.empty:
         st.dataframe(trends.head(15), hide_index=True)
@@ -283,15 +291,13 @@ with tab2:
     if "messages" not in st.session_state: st.session_state.messages = []
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
-
     if prompt := st.chat_input("Ask about matchups..."):
         with st.chat_message("user"): st.markdown(prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
-
         with st.spinner("Analyzing..."):
             context = f"TRENDS DATA:\n{trends.to_string()}\n\nINJURIES:\n{injuries}"
             final_prompt = f"ROLE: NBA Analyst. DATA: {context}. QUESTION: {prompt}"
             reply = generate_ai_response(final_prompt)
-            
+        
         with st.chat_message("assistant"): st.markdown(reply)
         st.session_state.messages.append({"role": "assistant", "content": reply})
