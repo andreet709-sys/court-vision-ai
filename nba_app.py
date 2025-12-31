@@ -97,6 +97,9 @@ def get_live_injuries():
 
 @st.cache_data(ttl=600) # Update every 10 mins
 def get_league_trends():
+    # Define the columns we EXPECT to have. This is our safety net.
+    expected_cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
+    
     try:
         # --- 1. GET THE DATA ---
         season_stats = leaguedashplayerstats.LeagueDashPlayerStats(
@@ -111,7 +114,6 @@ def get_league_trends():
         last5_stats = last5_stats[last5_stats['GP'] >= 3]
 
         # --- 2. MERGE ---
-        # Note: We include 'TEAM_ID' now so we can look up the schedule!
         merged = pd.merge(
             season_stats[['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ID', 'PTS', 'REB', 'AST']], 
             last5_stats[['PLAYER_ID', 'PTS', 'REB', 'AST']], 
@@ -121,36 +123,28 @@ def get_league_trends():
 
         merged['Trend (Delta)'] = merged['PTS_L5'] - merged['PTS_Season']
 
-        # --- 3. INTELLIGENCE LAYER (The New "Windshield") ---
-        games = get_todays_games()         # Who plays today?
-        defense = get_defensive_rankings() # Who sucks at defense?
+        # --- 3. INTELLIGENCE LAYER ---
+        games = get_todays_games()         
+        defense = get_defensive_rankings() 
 
         def analyze_matchup(row):
             my_team = row['TEAM_ID']
-            
-            # Is the player playing today?
             if my_team not in games:
                 return "No Game"
             
             opponent_id = games[my_team]
-            
-            # Analyze the Opponent
             if opponent_id in defense:
                 opp_name = defense[opponent_id]['Team']
                 opp_rating = defense[opponent_id]['Rating']
                 
-                # RATING LOGIC: Higher Rating = Worse Defense (Good for Scorer)
-                if opp_rating > 116.0:
-                    return f"vs {opp_name} (🟢 Soft)"
-                elif opp_rating < 112.0:
-                    return f"vs {opp_name} (🔴 Tough)"
-                else:
-                    return f"vs {opp_name} (⚪ Avg)"
+                if opp_rating > 116.0: return f"vs {opp_name} (🟢 Soft)"
+                elif opp_rating < 112.0: return f"vs {opp_name} (🔴 Tough)"
+                else: return f"vs {opp_name} (⚪ Avg)"
             return "vs Unknown"
 
         merged['Matchup'] = merged.apply(analyze_matchup, axis=1)
 
-        # --- 4. CLEANUP FOR DISPLAY ---
+        # --- 4. CLEANUP ---
         final_df = merged.rename(columns={
             'PLAYER_NAME': 'Player',
             'PTS_Season': 'Season PPG',
@@ -168,13 +162,13 @@ def get_league_trends():
 
         final_df['Status'] = final_df.apply(get_status, axis=1)
 
-        # Reorder columns so "Matchup" is visible first
-        cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
-        return final_df[cols].sort_values(by='Trend (Delta)', ascending=False)
+        # Return organized data
+        return final_df[expected_cols].sort_values(by='Trend (Delta)', ascending=False)
 
-    except Exception:
-        # Fallback in case of API failure
-        return pd.DataFrame()
+    except Exception as e:
+        # 🛡️ SAFETY NET: If anything fails, return an empty table WITH HEADERS
+        # This prevents the "KeyError" from crashing your dashboard
+        return pd.DataFrame(columns=expected_cols)
 
 @st.cache_data(ttl=3600)
 def get_todays_games():
@@ -385,6 +379,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
