@@ -100,76 +100,82 @@ def get_live_injuries():
 @st.cache_data(ttl=600) # Update every 10 mins
 def get_league_trends():
     try:
-        # --- CALL 1: WHOLE LEAGUE SEASON AVERAGES (1 API Call) ---
+        # --- 1. GET THE DATA ---
         season_stats = leaguedashplayerstats.LeagueDashPlayerStats(
-            season='2025-26', 
-            per_mode_detailed='PerGame'
+            season='2025-26', per_mode_detailed='PerGame'
         ).get_data_frames()[0]
 
-        # --- CALL 2: WHOLE LEAGUE LAST 5 GAMES (1 API Call) ---
         last5_stats = leaguedashplayerstats.LeagueDashPlayerStats(
-            season='2025-26', 
-            per_mode_detailed='PerGame', 
-            last_n_games=5
+            season='2025-26', per_mode_detailed='PerGame', last_n_games=5
         ).get_data_frames()[0]
 
-        # 🛑 FIX: Filter out players who played fewer than 3 games in this span
-        # This eliminates the "Marcus Sasser Trap"
+        # FILTER: Consistency Check (Must play 3+ games to be "Trending")
         last5_stats = last5_stats[last5_stats['GP'] >= 3]
 
-        # --- MERGE THE DATA (Now Fully Complete) ---
+        # --- 2. MERGE ---
+        # Note: We include 'TEAM_ID' now so we can look up the schedule!
         merged = pd.merge(
-            season_stats[['PLAYER_ID', 'PLAYER_NAME', 'PTS', 'REB', 'AST']], 
+            season_stats[['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ID', 'PTS', 'REB', 'AST']], 
             last5_stats[['PLAYER_ID', 'PTS', 'REB', 'AST']], 
             on='PLAYER_ID', 
             suffixes=('_Season', '_L5')
         )
 
-        # --- CALCULATE TRENDS ---
-        merged['Trend_PTS'] = merged['PTS_L5'] - merged['PTS_Season']
-        
-        # --- RENAME COLUMNS TO MATCH DASHBOARD ---
+        merged['Trend (Delta)'] = merged['PTS_L5'] - merged['PTS_Season']
+
+        # --- 3. INTELLIGENCE LAYER (The New "Windshield") ---
+        games = get_todays_games()         # Who plays today?
+        defense = get_defensive_rankings() # Who sucks at defense?
+
+        def analyze_matchup(row):
+            my_team = row['TEAM_ID']
+            
+            # Is the player playing today?
+            if my_team not in games:
+                return "No Game"
+            
+            opponent_id = games[my_team]
+            
+            # Analyze the Opponent
+            if opponent_id in defense:
+                opp_name = defense[opponent_id]['Team']
+                opp_rating = defense[opponent_id]['Rating']
+                
+                # RATING LOGIC: Higher Rating = Worse Defense (Good for Scorer)
+                if opp_rating > 116.0:
+                    return f"vs {opp_name} (🟢 Soft)"
+                elif opp_rating < 112.0:
+                    return f"vs {opp_name} (🔴 Tough)"
+                else:
+                    return f"vs {opp_name} (⚪ Avg)"
+            return "vs Unknown"
+
+        merged['Matchup'] = merged.apply(analyze_matchup, axis=1)
+
+        # --- 4. CLEANUP FOR DISPLAY ---
         final_df = merged.rename(columns={
             'PLAYER_NAME': 'Player',
             'PTS_Season': 'Season PPG',
-            'PTS_L5': 'Last 5 PPG',
-            'Trend_PTS': 'Trend (Delta)' 
+            'PTS_L5': 'Last 5 PPG'
         })
 
-        # --- STATUS LOGIC ---
+        # Add Status
         def get_status(row):
-            delta = row['Trend (Delta)']
-            if delta >= 4.0: return "🔥 Super Hot"
-            elif delta >= 2.0: return "🔥 Heating Up"
-            elif delta <= -3.0: return "❄️ Ice Cold"
-            elif delta <= -1.5: return "❄️ Cooling Down"
+            d = row['Trend (Delta)']
+            if d >= 4.0: return "🔥 Super Hot"
+            elif d >= 2.0: return "🔥 Heating Up"
+            elif d <= -3.0: return "❄️ Ice Cold"
+            elif d <= -1.5: return "❄️ Cooling Down"
             else: return "Zap"
-@st.cache_data(ttl=86400) # Cache daily
-def get_defensive_rankings():
-    """Fetches current defensive ratings for all 30 teams."""
-    try:
-        # Get Team Stats
-        teams = leaguedashteamstats.LeagueDashTeamStats(season='2025-26').get_data_frames()[0]
-        
-        # Sort by Defensive Rating (Ascending = Lower is Better Defense)
-        # We want to know who is BAD at defense (High Rating), so we can exploit them.
-        teams = teams.sort_values(by='DEF_RATING', ascending=False) # Worst defenses at the top
-        
-        # Keep it simple: Team Name and Rank
-        defense_map = {}
-        # Rank 30 is the WORST defense (Best for us to bet against)
-        # Rank 1 is the BEST defense (Bad for us)
-        
-        # We need a clean mapping of Team ID to Rating
-        for _, row in teams.iterrows():
-            defense_map[row['TEAM_ID']] = {
-                'Team': row['TEAM_NAME'],
-                'Rating': row['DEF_RATING']
-            }
-            
-        return defense_map
+
+        final_df['Status'] = final_df.apply(get_status, axis=1)
+
+        # Reorder columns so "Matchup" is visible first
+        cols = ['Player', 'Matchup', 'Season PPG', 'Last 5 PPG', 'Trend (Delta)', 'Status']
+        return final_df[cols].sort_values(by='Trend (Delta)', ascending=False)
+
     except Exception as e:
-        return {}
+        return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
 def get_todays_games():
@@ -385,6 +391,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
