@@ -129,7 +129,7 @@ def get_defensive_rankings_v4():
     defense_map = {}
     try:
         teams_data = leaguedashteamstats.LeagueDashTeamStats(
-            season=current_season_str,  # <--- Now dynamic
+            season=current_season_str,
             measure_type_detailed_defense='Advanced'
         ).get_data_frames()[0]
         teams_data = teams_data.sort_values(by='DEF_RATING', ascending=False)
@@ -214,7 +214,7 @@ def get_league_trends_v4():
             elif d >= 3.0: return "🔥 Heating Up"
             elif d <= -5.0: return "❄️ Ice Cold"
             elif d <= -2.0: return "❄️ Cooling Down"
-            else: return "⚪ Steady"
+            else: return "⚪ Steady"  # <--- Changed from "Zap" to "Steady" + neutral emoji
         
         final_df['Status'] = final_df.apply(get_status, axis=1)
         
