@@ -178,12 +178,12 @@ def get_league_trends():
 
 @st.cache_data(ttl=3600)
 def get_todays_games():
-    """Finds out who is playing TODAY."""
+    """Finds out who is playing TODAY (Safe Version - No Pytz)."""
     try:
-        # Get today's date in Eastern Time (NBA time)
-        eastern = pytz.timezone('US/Eastern')
-        today = datetime.now(eastern).strftime('%m/%d/%Y')
+        # Simplified Date Logic (Uses server time)
+        today = datetime.now().strftime('%m/%d/%Y')
         
+        # Pull the scoreboard
         board = scoreboardv2.ScoreboardV2(game_date=today).get_data_frames()[0]
         
         # Map of TEAM_ID -> OPPONENT_ID
@@ -192,18 +192,13 @@ def get_todays_games():
             return {}
             
         for _, row in board.iterrows():
-            home_id = row['HOME_TEAM_ID']
-            visitor_id = row['VISITOR_TEAM_ID']
-            
-            # Map both sides so we can look up anyone
-            games[home_id] = visitor_id
-            games[visitor_id] = home_id
+            games[row['HOME_TEAM_ID']] = row['VISITOR_TEAM_ID']
+            games[row['VISITOR_TEAM_ID']] = row['HOME_TEAM_ID']
             
         return games
-    except:
+    except Exception:
+        # If this fails, we just return empty, preventing a crash
         return {}
-        final_df['Status'] = final_df.apply(get_status, axis=1)
-
         # Return the rich dataset
         return final_df.sort_values(by='Trend (Delta)', ascending=False)
 
@@ -390,6 +385,7 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
 
 
