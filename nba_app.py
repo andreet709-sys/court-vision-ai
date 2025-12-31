@@ -29,18 +29,42 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CACHED FUNCTIONS ---
+@st.cache_data(ttl=86400) # Cache this map for 24 hours (rosters don't change often)
+def get_team_map():
+    try:
+        # Pull all players who have played at least 1 minute this season to get their Team ID
+        df = leaguedashplayerstats.LeagueDashPlayerStats(season='2025-26', per_mode_detailed='PerGame').get_data_frames()[0]
+        # Create a dictionary: {'LeBron James': 'LAL', 'Stephen Curry': 'GSW'}
+        return pd.Series(df.TEAM_ABBREVIATION.values, index=df.PLAYER_NAME).to_dict()
+    except:
+        return {}
+
 @st.cache_data(ttl=3600)
 def get_live_injuries():
     url = "https://www.cbssports.com/nba/injuries/"
     headers = {"User-Agent": "Mozilla/5.0"}
+    
+    # 1. Get the Roster Map first
+    team_map = get_team_map()
+    
     try:
         response = requests.get(url, headers=headers)
         tables = pd.read_html(StringIO(response.text))
         injuries = {}
+        
         for df in tables:
             if 'Player' in df.columns:
                 for _, row in df.iterrows():
-                    injuries[str(row['Player'])] = str(row['Injury Status'])
+                    player_name = str(row['Player']).strip()
+                    status = str(row['Injury Status'])
+                    
+                    # 2. Find the Team Abbreviation
+                    # We try to find the name in our map. Default to "N/A" if not found.
+                    team_code = team_map.get(player_name, "Unknown")
+                    
+                    # 3. Save as "Status (TEAM)" so the AI can read it
+                    injuries[player_name] = f"{status} ({team_code})"
+                    
         return injuries
     except:
         return {}
@@ -258,4 +282,5 @@ with tab2:
                 
             except Exception as e:
                 st.error(f"AI Error: {e}")
+
 
