@@ -104,7 +104,7 @@ st.markdown("""
 <style>
     .stAppDeployButton, [data-testid="stDecoration"] { display: none !important; }
     footer { visibility: hidden; }
-    [data-testid="stToolbar"] { visibility: hidden; height: 0%; }
+    /* [data-testid="stToolbar"] { visibility: hidden; height: 0%; } */  ← commented out or deleted
 </style>
 """, unsafe_allow_html=True)
 
@@ -327,5 +327,6 @@ with tab2:
             
             with st.chat_message("assistant"): st.markdown(reply)
             st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
