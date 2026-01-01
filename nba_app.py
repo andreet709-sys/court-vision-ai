@@ -108,20 +108,24 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# PWA manifest and service worker registration
+# PWA manifest and service worker registration (force root paths)
 st.markdown("""
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#4AF626">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="CourtVision AI">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" href="/icon-192.png" sizes="192x192">
+<link rel="icon" type="image/png" href="/icon-512.png" sizes="512x512">
 <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-            navigator.serviceWorker.register('service-worker.js');
-        });
-    }
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(reg => console.log('Service Worker registered!', reg))
+        .catch(err => console.log('Service Worker registration failed:', err));
+    });
+  }
 </script>
 """, unsafe_allow_html=True)
 # --- CACHED FUNCTIONS ---
@@ -327,6 +331,7 @@ with tab2:
             
             with st.chat_message("assistant"): st.markdown(reply)
             st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
 
