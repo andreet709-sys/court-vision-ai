@@ -326,49 +326,51 @@ with tab2:
                 st.markdown(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
             
-            with st.spinner("Analyzing..."):
-# Get team map for readable schedule
+with st.spinner("Analyzing..."):
+                # Get team map for readable schedule
                 team_map = get_team_map_v4()
                 
                 todays_games = get_todays_games_v4()
-                games_str = "TODAY'S SCHEDULE (most important - use this first - IDs mapped to team names):\n"
+                games_str = "TODAY'S SCHEDULE (highest priority - use this first - IDs mapped to team names):\n"
                 if todays_games:
                     for home_id, away_id in todays_games.items():
-                        home_name = team_map.get(home_id, "Unknown (" + str(home_id) + ")")
-                        away_name = team_map.get(away_id, "Unknown (" + str(away_id) + ")")
-                        games_str += f"{home_name} vs {away_name} (IDs: {home_id} vs {away_id})\n"
+                        home_name = team_map.get(str(home_id), "Unknown (" + str(home_id) + ")")
+                        away_name = team_map.get(str(away_id), "Unknown (" + str(away_id) + ")")
+                        games_str += f"{home_name} vs {away_name}\n"
                 else:
                     games_str += "No games data available today.\n"
                 
-                context = f"{games_str}\n\nTRENDS DATA:\n{trends.to_string()}\n\nINJURIES:\n{injuries}"
+                # Trim trends to top 20 for token efficiency
+                trends_trimmed = ""
+                if not trends.empty:
+                    top_trends = trends.head(20)
+                    trends_trimmed = "Top 20 Trends (Player | Matchup | Season PRA | Last 5 PRA | PRA Delta | Status):\n"
+                    for _, row in top_trends.iterrows():
+                        trends_trimmed += f"{row['Player']} | {row['Matchup']} | {row['Season PRA']:.1f} | {row['Last 5 PRA']:.1f} | {row['PRA Delta']:+.1f} | {row['Status']}\n"
+                else:
+                    trends_trimmed = "No trends data available.\n"
                 
-                                # Trim trends to top 20 rows to avoid token overflow
-                trends_trimmed = trends.head(20).to_string()
+                context = f"{games_str}\n\nTRENDS DATA (top 20):\n{trends_trimmed}\n\nINJURIES:\n{injuries}"
                 
                 final_prompt = f"""You are a sharp NBA betting analyst. FOLLOW THESE RULES STRICTLY - NO EXCEPTIONS:
 1. TODAY'S SCHEDULE IS GROUND TRUTH - ALWAYS use it FIRST for any matchup, game, or opponent reference. IGNORE all news, articles, or internal knowledge from yesterday or earlier.
-2. Use ONLY the provided TRENDS DATA and INJURIES for ALL stats, deltas, PRA, trends, and injury impact. DO NOT use your own knowledge, web search, or any other sources for numbers, teams, or facts.
-3. REPEAT TODAY'S SCHEDULE at the start of your answer to confirm you are using it.
+2. Use ONLY the provided TRENDS DATA and INJURIES for ALL stats, deltas, PRA, trends, and injury impact - DO NOT use your own knowledge or web search for numbers, teams, or facts.
+3. REPEAT TODAY'S SCHEDULE (with team names) at the start of your answer to confirm you are using it.
 4. If any requested data (matchup, stats, injury impact) is missing or not in the provided DATA, say exactly: "Data unavailable for this specific scenario from provided sources."
 5. Be accurate, concise, evidence-based. Show math. No speculation.
 
 TODAY'S SCHEDULE (REPEAT THIS IN YOUR ANSWER):
 {games_str}
 
-TRENDS DATA (top 20 only):
+TRENDS DATA (top 20):
 {trends_trimmed}
 
 INJURIES:
 {injuries}
 
 QUESTION: {prompt}"""
-
-            reply = generate_ai_response(final_prompt)
-            
-            with st.chat_message("assistant"):
-                st.markdown(reply)
-            st.session_state.messages.append({"role": "assistant", "content": reply})
-
+                
+                reply = generate_ai_response(final_prompt)
 
 
 
