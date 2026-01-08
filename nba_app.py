@@ -361,9 +361,10 @@ QUESTION: {prompt}"""
 
             reply = generate_ai_response(final_prompt)
             
-        with st.chat_message("assistant"):
+            with st.chat_message("assistant"):
                 st.markdown(reply)
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
 
