@@ -334,11 +334,28 @@ with tab2:
                     games_str += "No games data available today.\n"
                 
                 context = f"{games_str}\n\nTRENDS DATA:\n{trends.to_string()}\n\nINJURIES:\n{injuries}"
-                final_prompt = f"ROLE: Sharp NBA betting analyst. ALWAYS use TODAY'S SCHEDULE above as ground truth for matchups - ignore old news/articles. DATA: {context}. QUESTION: {prompt}"
+               final_prompt = f"""You are a sharp NBA betting analyst. 
+GROUND TRUTH RULES (highest priority - never override):
+1. ALWAYS use TODAY'S SCHEDULE first for any matchup or game reference — ignore any news/articles from yesterday or earlier.
+2. Use ONLY the provided TRENDS DATA and INJURIES for stats, deltas, PRA, trends, and injury impact — do NOT use your internal knowledge or web search for numbers/teams.
+3. If data conflicts or is missing, say "Data unavailable for this" instead of guessing.
+4. Be accurate, evidence-based, and concise.
+
+TODAY'S SCHEDULE (use this first):
+{games_str}
+
+TRENDS DATA:
+{trends.to_string()}
+
+INJURIES:
+{injuries}
+
+QUESTION: {prompt}"""
                 reply = generate_ai_response(final_prompt)
             
             with st.chat_message("assistant"): st.markdown(reply)
             st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
 
