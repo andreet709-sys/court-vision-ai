@@ -327,12 +327,16 @@ with tab2:
             st.session_state.messages.append({"role": "user", "content": prompt})
             
             with st.spinner("Analyzing..."):
-                # Get today's games fresh every chat
+# Get team map for readable schedule
+                team_map = get_team_map_v4()
+                
                 todays_games = get_todays_games_v4()
-                games_str = "TODAY'S SCHEDULE (most important - use this first):\n"
+                games_str = "TODAY'S SCHEDULE (most important - use this first - IDs mapped to team names):\n"
                 if todays_games:
-                    for home, away in todays_games.items():
-                        games_str += f"{home} vs {away}\n"
+                    for home_id, away_id in todays_games.items():
+                        home_name = team_map.get(home_id, "Unknown (" + str(home_id) + ")")
+                        away_name = team_map.get(away_id, "Unknown (" + str(away_id) + ")")
+                        games_str += f"{home_name} vs {away_name} (IDs: {home_id} vs {away_id})\n"
                 else:
                     games_str += "No games data available today.\n"
                 
@@ -364,6 +368,7 @@ QUESTION: {prompt}"""
             with st.chat_message("assistant"):
                 st.markdown(reply)
             st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
 
