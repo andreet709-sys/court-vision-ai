@@ -338,29 +338,27 @@ with tab2:
                 
                 context = f"{games_str}\n\nTRENDS DATA:\n{trends.to_string()}\n\nINJURIES:\n{injuries}"
                 
-                final_prompt = f"""You are a sharp NBA betting analyst. 
-GROUND TRUTH RULES (highest priority - never override):
-1. ALWAYS use TODAY'S SCHEDULE first for any matchup or game reference - ignore any news/articles from yesterday or earlier.
-2. Use ONLY the provided TRENDS DATA and INJURIES for stats, deltas, PRA, trends, and injury impact - do NOT use your internal knowledge or web search for numbers/teams.
-3. If data conflicts or is missing, say "Data unavailable for this" instead of guessing.
-4. Be accurate, evidence-based, and concise.
+                                # Trim trends to top 20 rows to avoid token overflow
+                trends_trimmed = trends.head(20).to_string()
+                
+                final_prompt = f"""You are a sharp NBA betting analyst. FOLLOW THESE RULES STRICTLY - NO EXCEPTIONS:
+1. TODAY'S SCHEDULE IS GROUND TRUTH - ALWAYS use it FIRST for any matchup, game, or opponent reference. IGNORE all news, articles, or internal knowledge from yesterday or earlier.
+2. Use ONLY the provided TRENDS DATA and INJURIES for ALL stats, deltas, PRA, trends, and injury impact. DO NOT use your own knowledge, web search, or any other sources for numbers, teams, or facts.
+3. REPEAT TODAY'S SCHEDULE at the start of your answer to confirm you are using it.
+4. If any requested data (matchup, stats, injury impact) is missing or not in the provided DATA, say exactly: "Data unavailable for this specific scenario from provided sources."
+5. Be accurate, concise, evidence-based. Show math. No speculation.
 
-TODAY'S SCHEDULE (use this first):
+TODAY'S SCHEDULE (REPEAT THIS IN YOUR ANSWER):
 {games_str}
 
-TRENDS DATA:
-{trends.to_string()}
+TRENDS DATA (top 20 only):
+{trends_trimmed}
 
 INJURIES:
 {injuries}
 
 QUESTION: {prompt}"""
-                
-                reply = generate_ai_response(final_prompt)
-            
-            with st.chat_message("assistant"):
-                st.markdown(reply)
-            st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
 
