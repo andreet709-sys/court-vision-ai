@@ -324,7 +324,7 @@ with tab2:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
         
-if prompt := st.chat_input("Ask about matchups..."):
+    if prompt := st.chat_input("Ask about matchups..."):
             with st.chat_message("user"):
                 st.markdown(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
@@ -380,6 +380,7 @@ QUESTION: {prompt}"""
             with st.chat_message("assistant"):
                 st.markdown(reply or "No reply received - check Gemini key or prompt.")
             st.session_state.messages.append({"role": "assistant", "content": reply})
+
 
 
 
