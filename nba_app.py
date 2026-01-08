@@ -327,6 +327,30 @@ with tab2:
             st.session_state.messages.append({"role": "user", "content": prompt})
             
 with st.spinner("Analyzing..."):
+                st.write("DEBUG: Starting analysis")  # Should show immediately
+                
+                todays_games = get_todays_games_v4()
+                st.write("DEBUG: Got today's games")  # If this doesn't show, caching or function error
+                
+                games_str = "TODAY'S SCHEDULE (most important - use this first):\n"
+                if todays_games:
+                    for home, away in todays_games.items():
+                        games_str += f"{home} vs {away}\n"
+                else:
+                    games_str += "No games data available today.\n"
+                
+                st.write("DEBUG: Games string built")  # If this shows, context is ready
+                
+                context = f"{games_str}\n\nTRENDS DATA:\n{trends.to_string()}\n\nINJURIES:\n{injuries}"
+                final_prompt = f"""... (your strong prompt here)"""
+                
+                st.write("DEBUG: Prompt ready - length:", len(final_prompt))  # Shows if prompt is too long
+                
+                reply = generate_ai_response(final_prompt)
+                st.write("DEBUG: Raw reply from Gemini:", reply)  # This will show what Gemini actually returned
+                
+                if not reply:
+                    reply = "No response from AI - check Gemini key or prompt length."
                 # Get team map for readable schedule
                 team_map = get_team_map_v4()
                 
@@ -371,6 +395,7 @@ INJURIES:
 QUESTION: {prompt}"""
                 
                 reply = generate_ai_response(final_prompt)
+
 
 
 
